@@ -26,7 +26,7 @@ seq2int = {
 
 def import_DMS(path_to_dms=None, size=None, data_type='fake-data', save=False, reload=True):
 
-    assert data_type in ['fake_data', 'sarah_supermodels'], "Type must be 'fake-data' or 'sarah-testset'"
+    assert data_type in ['fake_data', 'sarah_supermodels'], "Type must be 'fake-data' or 'sarah_supermodels'"
 
     # Paths to the dataset
     dirname = os.path.dirname(os.path.abspath(__file__))
