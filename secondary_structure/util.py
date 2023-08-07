@@ -29,7 +29,48 @@ seq2int = {
 dot2int = {'.': 1, '(': 2, ')': 3, 'X': 0}
 int2dot = ['X', '.', '(', ')']
 
-def import_structure(path_to_structures=None, dataset='synthetic', size=None, save=False, reload=True):
+
+def generate_embeddings(df, data_dir, device="cpu"):
+
+    # Create temp folder
+    temp_dir = os.path.join(data_dir, 'temp')
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+
+    rna_fm_dir = os.path.join(data_dir, '..', '..', 'RNA-FM', 'redevelop')
+    os.chdir(rna_fm_dir)
+
+    # Generate a fasta file
+    with open(os.path.join(temp_dir, 'sequences.fasta'), 'w') as f:
+        for i in range(len(df)):
+            f.write(f'>{df.index[i]}\n{df.iloc[i]["sequence"]}\n')
+
+    # Run RNA-FM to generate the embeddings
+    cmd = f'python launch/predict.py --config="pretrained/extract_embedding.yml" \
+            --data_path={os.path.join(temp_dir, "sequences.fasta")} --save_dir={temp_dir} \
+            --save_frequency 1 --save_embeddings --device=device'
+    
+    os.system(cmd)
+
+    # Move results to data_dir and remove temps folder
+    os.system(f'mv {temp_dir}/representations {data_dir}/embeddings')
+    os.system(f'rm -r {temp_dir}')
+
+    sequences = []
+    idx_todelete = []
+    for i in range(len(df)):
+        file_dir = os.path.join(data_dir, 'embeddings', f'{df.index[i]}.npy')
+        if os.path.exists(file_dir):
+            sequences.append(file_dir)
+        else:
+            idx_todelete.append(i)
+
+    df = df.drop(df.index[idx_todelete]) 
+
+    # Return all references in the embeddings folder
+    return df, sequences
+
+def import_structure(path_to_structures=None, dataset='synthetic', size=None, save=False, reload=True, rna_fm=False):
     """
     Import the secondary structure dataset and convert to pairing matrix, with padding.
     Each pairing matrix is directly saved as a separate npy file.
@@ -50,14 +91,18 @@ def import_structure(path_to_structures=None, dataset='synthetic', size=None, sa
 
     # Paths to the dataset
     dirname = os.path.dirname(os.path.abspath(__file__))
-    save_path = [os.path.join(dirname, 'dataset', dataset, 'processed_sequences.npy'),
-                 os.path.join(dirname, 'dataset', dataset, 'processed_structures.npy')]
-    
-    if not os.path.exists(os.path.join(dirname, 'dataset', dataset)):
-        os.makedirs(os.path.join(dirname, 'dataset', dataset))
+    data_dir = os.path.join(dirname, 'dataset', dataset)
+
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+
+    save_path = [os.path.join(data_dir, 'processed_sequences.npy'),
+                 os.path.join(data_dir, 'processed_structures.npy')]
+    if rna_fm:
+        save_path[0] = os.path.join(data_dir, 'references.npy')
 
     if path_to_structures is None:
-        path_to_structures = os.path.join(dirname, 'dataset', dataset, 'secondary_structure.json')
+        path_to_structures = os.path.join(data_dir, 'secondary_structure.json')
 
 
     # Check if the dataset is already saved
@@ -69,6 +114,7 @@ def import_structure(path_to_structures=None, dataset='synthetic', size=None, sa
             size = len(df)
 
         if os.path.exists(save_path[0]) and os.path.exists(save_path[1]):
+
             print("Loading saved dataset")
             sequences = np.load(save_path[0], allow_pickle=True)
             structures = np.load(save_path[1], allow_pickle=True)
@@ -80,7 +126,7 @@ def import_structure(path_to_structures=None, dataset='synthetic', size=None, sa
                 idx = np.random.choice(len(sequences), size=size, replace=False)
                 if save:
                     np.save(save_path[0], sequences[idx])
-                    np.save(save_path[2], structures[idx])
+                    np.save(save_path[1], structures[idx])
                 
                 return sequences[idx], structures[idx]
         else:
@@ -102,9 +148,14 @@ def import_structure(path_to_structures=None, dataset='synthetic', size=None, sa
         idx = np.random.choice(len(df), size=size, replace=False)
         df = df.iloc[idx]
 
+
         # Init numpy arrays for sequences
         sequences = []
         structures = []
+        
+        # Generate embeddings and get list of sequences paths
+        if rna_fm:
+            df, sequences = generate_embeddings(df, data_dir)
 
         # Iterate over the rows of the dataframe
         for i, (reference, row) in enumerate(df.iterrows()):
@@ -114,8 +165,11 @@ def import_structure(path_to_structures=None, dataset='synthetic', size=None, sa
                 sys.stdout.write("Processing dataset: %d%%   \r" % (100*i/len(df)) )
                 sys.stdout.flush()
 
-            # Integer encoding of the sequence
-            sequences.append(np.array([seq2int[base] for base in row['sequence'].upper()]))
+            if not rna_fm:
+                # Integer encoding of the sequence
+                sequences.append(np.array([seq2int[base] for base in row['sequence'].upper()]))
+            else:
+                assert np.load(sequences[i]).shape[0] == len(row['sequence'])
 
             # Convert to numpy array
             structures.append(np.array(row['paired_bases']))
@@ -134,5 +188,5 @@ def import_structure(path_to_structures=None, dataset='synthetic', size=None, sa
 
 if __name__ == '__main__':
 
-    sequences, structures = import_structure(save=True, reload=False, dataset='test_PDB')
+    sequences, structures = import_structure(save=True, reload=False, dataset='SARS2', rna_fm=True)
     print("Loaded full dataset with shape: \n", sequences.shape, "\n", len(structures))
