@@ -30,7 +30,7 @@ dot2int = {'.': 1, '(': 2, ')': 3, 'X': 0}
 int2dot = ['X', '.', '(', ')']
 
 
-def generate_embeddings(df, data_dir, device="cpu"):
+def generate_embeddings(df, data_dir, device='cpu'):
 
     # Create temp folder
     temp_dir = os.path.join(data_dir, 'temp')
@@ -48,7 +48,7 @@ def generate_embeddings(df, data_dir, device="cpu"):
     # Run RNA-FM to generate the embeddings
     cmd = f'python launch/predict.py --config="pretrained/extract_embedding.yml" \
             --data_path={os.path.join(temp_dir, "sequences.fasta")} --save_dir={temp_dir} \
-            --save_frequency 1 --save_embeddings --device=device'
+            --save_frequency 1 --save_embeddings --device={device}'
     
     os.system(cmd)
 
@@ -121,7 +121,7 @@ def import_structure(path_to_structures=None, dataset='synthetic', size=None, sa
 
             if len(sequences) < size or len(structures) < size:
                 print("Dataset too small, creating new one")
-                return import_structure(path_to_structures, size=size, save=save, reload=False)
+                return import_structure(path_to_structures, size=size, save=save, reload=False, rna_fm=rna_fm)
             else:
                 idx = np.random.choice(len(sequences), size=size, replace=False)
                 if save:
@@ -131,7 +131,7 @@ def import_structure(path_to_structures=None, dataset='synthetic', size=None, sa
                 return sequences[idx], structures[idx]
         else:
             print("Dataset not found, creating new one")
-            return import_structure(path_to_structures, size=size, save=save, reload=False)
+            return import_structure(path_to_structures, size=size, save=save, reload=False, rna_fm=rna_fm)
         
 
     else:  
@@ -188,5 +188,5 @@ def import_structure(path_to_structures=None, dataset='synthetic', size=None, sa
 
 if __name__ == '__main__':
 
-    sequences, structures = import_structure(save=True, reload=False, dataset='SARS2', rna_fm=True)
+    sequences, structures = import_structure(size=32, save=False, reload=True, dataset='SARS2', rna_fm=True)
     print("Loaded full dataset with shape: \n", sequences.shape, "\n", len(structures))
